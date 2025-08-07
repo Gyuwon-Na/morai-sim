@@ -2,11 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import rospy
-from sensor_msgs.msg import CompressedImage
 from std_msgs.msg import Float64
-from cv_bridge import CvBridge
-from nav_msgs.msg import Odometry
-import cv2
 import numpy as np
 import sliding_window as sliding_window
 
