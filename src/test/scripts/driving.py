@@ -12,26 +12,22 @@ import sliding_window as sliding_window
 
 class AutonomousDriving:
     def __init__(self):
-        self.mission_list = [
-            "straight", "straight", "straight", "corner", "straight", "straight", "corner", "straight", "corner"
-        ]
-
         self.sliding = sliding_window.SlidingWindow()
         self.steer_pub = rospy.Publisher("/commands/servo/position", Float64, queue_size=1)
         self.speed_pub = rospy.Publisher("/commands/motor/speed", Float64, queue_size=1)
         self.steer_msg = Float64()
         self.speed_msg = Float64()
-    
+        self.speed_msg.data = 1000 # Default speed
+
     def action(self, width, height, bin_img):
-        self.width, self.height = width, height
+        self.width = width
+        self.height = height
         left_fit, right_fit = self.sliding.apply(bin_img)
 
         if left_fit is not None and right_fit is not None:
             self.setSteeringinCurve(left_fit, right_fit)
-            self.speed_msg.data = 1000  # 곡선 구간
         else:
             self.setSteeringinStraight(bin_img)
-            self.speed_msg.data = 500   # 직선 구간
         
         self.steer_pub.publish(self.steer_msg)
         self.speed_pub.publish(self.speed_msg)
