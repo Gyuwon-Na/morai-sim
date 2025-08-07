@@ -7,13 +7,11 @@ from std_msgs.msg import Float64
 from cv_bridge import CvBridge
 import cv2
 import numpy as np
-import time
 
-class LaneFollower:
+class Lane_sub:
     def __init__(self):
-        rospy.init_node("lane_follower_node")
-        rospy.Subscriber("/image_jpeg/compressed", CompressedImage, self.cam_callback)
-
+        rospy.init_node("lane_steering_node")
+        rospy.Subscriber("/image_jpeg/compressed", CompressedImage, self.cam_CB)
         self.steer_pub = rospy.Publisher("/commands/servo/position", Float64, queue_size=1)
         self.speed_pub = rospy.Publisher("/commands/motor/speed", Float64, queue_size=1)
 
@@ -22,12 +20,12 @@ class LaneFollower:
         self.speed_msg = Float64()
         self.speed_msg.data = 1000  # 기본 속도
 
-    def cam_callback(self, msg):
+    def cam_CB(self, msg):
         img = self.bridge.compressed_imgmsg_to_cv2(msg)
         hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-        h, w = img.shape[:2]
+        height, width = img.shape[:2]
 
-        # 색상 필터링 (노란선 + 흰선)
+        # 차선 색상 범위(노란색, 흰색)
         yellow_lower = np.array([15, 128, 0])
         yellow_upper = np.array([45, 255, 255])
         white_lower = np.array([0, 0, 192])
@@ -36,16 +34,42 @@ class LaneFollower:
         yellow_mask = cv2.inRange(hsv, yellow_lower, yellow_upper)
         white_mask = cv2.inRange(hsv, white_lower, white_upper)
         combined_mask = cv2.bitwise_or(yellow_mask, white_mask)
+        filtered = cv2.bitwise_and(img, img, mask=combined_mask)
 
         # 투시 변환
-        src = np.float32([[0, 420], [275, 260], [w - 275, 260], [w, 420]])
-        dst = np.float32([[w // 8, 480], [w // 8, 0], [w // 8 * 7, 0], [w // 8 * 7, 480]])
+        src = np.float32([
+            [0, 420],
+            [275, 260],
+            [width-275, 260],
+            [width, 420]
+        ])
+        dst = np.float32([
+            [width//8, 480],
+            [width//8, 0],
+            [width//8*7, 0],
+            [width//8*7, 480]
+        ])
         M = cv2.getPerspectiveTransform(src, dst)
-        warped = cv2.warpPerspective(combined_mask, M, (w, h))
+        warped_img = cv2.warpPerspective(filtered, M, (width, height))
 
-        # 차선 중심 계산
-        histogram = np.sum(warped[warped.shape[0]//2:, :], axis=0)
-        midpoint = w // 2
+        # 이진화
+        gray = cv2.cvtColor(warped_img, cv2.COLOR_BGR2GRAY)
+        bin_img = np.zeros_like(gray)
+        bin_img[gray > 50] = 255
+
+        # 선 검출
+        edges = cv2.Canny(bin_img, 50, 150)
+        lines = cv2.HoughLinesP(edges, 1, np.pi/180, threshold=50, minLineLength=20, maxLineGap=15)
+
+        warped_color = warped_img.copy()
+        if lines is not None:
+            for line in lines:
+                x1, y1, x2, y2 = line[0]
+                cv2.line(warped_color, (x1, y1), (x2, y2), (0, 255, 0), 2)
+
+        # 차선 중심 계산 (histogram 방식)
+        histogram = np.sum(bin_img[height//2:, :], axis=0)
+        midpoint = width // 2
         lane_center = np.mean(np.where(histogram > 50)) if np.any(histogram > 50) else midpoint
 
         # 조향 계산
@@ -53,28 +77,25 @@ class LaneFollower:
         steer = 0.5 + offset * 0.4                    # 조향 감도 조절
         steer = np.clip(steer, 0.0, 1.0)
 
-        # 메시지 발행
+        # 메시지 퍼블리시
         self.steer_msg.data = steer
         self.steer_pub.publish(self.steer_msg)
         self.speed_pub.publish(self.speed_msg)
 
-        # 디버그 출력
         rospy.loginfo(f"[조향] offset: {offset:.2f}, steer: {steer:.2f}")
 
         # 시각화
-        warped_bgr = cv2.cvtColor(warped, cv2.COLOR_GRAY2BGR)
-        cv2.line(warped_bgr, (int(lane_center), h), (int(lane_center), h - 50), (0, 255, 0), 3)
-        cv2.line(warped_bgr, (midpoint, h), (midpoint, h - 50), (255, 0, 0), 3)
-        cv2.imshow("Warped", warped_bgr)
+        cv2.line(warped_color, (int(lane_center), height), (int(lane_center), height - 50), (0, 255, 255), 3)
+        cv2.line(warped_color, (midpoint, height), (midpoint, height - 50), (255, 0, 0), 3)
+        cv2.imshow("Warped + Lines", warped_color)
         cv2.waitKey(1)
 
 def main():
     try:
-        LaneFollower()
+        Lane_sub()
         rospy.spin()
     except rospy.ROSInterruptException:
         pass
 
 if __name__ == "__main__":
     main()
-
