@@ -14,6 +14,7 @@ class Obstacle:
         self.scan_msg = LaserScan()
         self.obstacle_degrees = []
         self.obstacle_index = []
+        self.detected = False
         
     def lidar_CB(self, msg):
         os.system("clear")
@@ -27,6 +28,9 @@ class Obstacle:
                 print(f"Obstacle detected at {degrees[index]:.2f} degrees, distance: {value:.2f} m")
                 self.obstacle_degrees.append(degrees[index])
                 self.obstacle_index.append(index)
+                self.detected = True
+            else:
+                self.detected = False
 
     def avoidance(self):
         try:
@@ -43,4 +47,4 @@ class Obstacle:
         except IndexError:
             degree_avg = 0
         
-        self.steer_msg.data = degree_avg / 90 + 0.5
+        return degree_avg / 90 + 0.5

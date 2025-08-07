@@ -25,12 +25,18 @@ class AutonomousDriving:
         self.height = height
         left_fit, right_fit = self.sliding.apply(bin_img)
 
-        self.traffic_signal()
+        ## 미션 구간 범위 지정해두고 그때만 쓰게 하기
+        # self.traffic_signal()
+
+        # if self.obstacle_avoidance.detected:
+        #     avoidance_degree = self.obstacle_avoidance.avoidance()
+        #     self.steer_msg.data = avoidance_degree
 
         if left_fit is not None and right_fit is not None:
             self.setSteeringinCurve(left_fit, right_fit)
         else:
             self.setSteeringinStraight(bin_img)
+
         
         self.steer_pub.publish(self.steer_msg)
         self.speed_pub.publish(self.speed_msg)
