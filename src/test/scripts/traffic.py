@@ -20,12 +20,11 @@ class Traffic_Sub:
         signal = msg.trafficLightStatus
 
         if signal == 1:
-            print(f"{msg.trafficLightIndex}: red")
+            pass
+            # print(f"{msg.trafficLightIndex}: red")
         elif signal == 4:
-            print(f"{msg.trafficLightIndex}: yellow")
-        elif signal == 16:
-            print(f"{msg.trafficLightIndex}: green")
-        elif signal == 33:
-            print(f"{msg.trafficLightIndex}: left")
-
-            
+            pass
+            # print(f"{msg.trafficLightIndex}: yellow")
+        elif signal == 16 or signal == 33:
+            pass
+            # print(f"{msg.trafficLightIndex}: green")

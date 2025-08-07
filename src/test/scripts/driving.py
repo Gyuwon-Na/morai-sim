@@ -60,4 +60,6 @@ class AutonomousDriving:
 
         self.steer_msg.data = np.clip(steer_base, 0.0, 1.0)
 
+    def setSteeringinRotary(self, bin_img):
+        pass
 
