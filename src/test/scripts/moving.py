@@ -7,6 +7,7 @@ from std_msgs.msg import Float64
 from cv_bridge import CvBridge
 import cv2
 import numpy as np
+import math
 
 class Lane_sub:
     def __init__(self):
@@ -81,9 +82,10 @@ class Lane_sub:
         lane_center = np.mean(np.where(histogram > 50)) if np.any(histogram > 50) else midpoint
 
         # 조향 계산
-        is_corner = self.isCorner()
+        is_curve = self.isCurve(bin_img)
+        print(is_curve)
 
-        if is_corner is False:
+        if is_curve is False:
             offset = (lane_center - midpoint) / midpoint
             steer = 0.5 + offset * 0.4                   
             steer = np.clip(steer, 0.0, 1.0)
@@ -95,8 +97,78 @@ class Lane_sub:
         self.steer_pub.publish(self.steer_msg)
         self.speed_pub.publish(self.speed_msg)
         
-    def isCorner(self):
-        return False
+
+    def isCurve(self, bin_img):
+        """
+        bin_img 에서 슬라이딩 윈도우로 좌/우 차선 픽셀을 찾고
+        2차 다항식으로 피팅한 후, 계수 a 의 절댓값이 threshold 이상이면 커브로 판단.
+        """
+        # 1) nonzero 좌표
+        nonzero = bin_img.nonzero()
+        nonzeroy = np.array(nonzero[0])
+        nonzerox = np.array(nonzero[1])
+
+        # 2) 히스토그램 기반 시작점
+        histogram = np.sum(bin_img[self.height//2:, :], axis=0)
+        midpoint = histogram.shape[0] // 2
+        leftx_current  = np.argmax(histogram[:midpoint])
+        rightx_current = np.argmax(histogram[midpoint:]) + midpoint
+
+        # 3) 슬라이딩 윈도우 파라미터
+        nwindows = 9
+        window_height = np.int(self.height // nwindows)
+        margin = 100
+        minpix = 50
+
+        left_inds = []
+        right_inds = []
+        # 4) 윈도우마다 픽셀 인덱스 수집
+        for w in range(nwindows):
+            y_low  = self.height - (w+1)*window_height
+            y_high = self.height -  w   *window_height
+            x_l_low  = leftx_current  - margin
+            x_l_high = leftx_current  + margin
+            x_r_low  = rightx_current - margin
+            x_r_high = rightx_current + margin
+
+            good_l = ((nonzeroy >= y_low) & (nonzeroy < y_high) &
+                      (nonzerox >= x_l_low) & (nonzerox < x_l_high)).nonzero()[0]
+            good_r = ((nonzeroy >= y_low) & (nonzeroy < y_high) &
+                      (nonzerox >= x_r_low) & (nonzerox < x_r_high)).nonzero()[0]
+
+            left_inds.append(good_l)
+            right_inds.append(good_r)
+
+            if len(good_l) > minpix:
+                leftx_current = np.int(np.mean(nonzerox[good_l]))
+            if len(good_r) > minpix:
+                rightx_current = np.int(np.mean(nonzerox[good_r]))
+
+        # 5) 인덱스 합치기
+        left_inds  = np.concatenate(left_inds)
+        right_inds = np.concatenate(right_inds)
+
+        # 6) 좌표 분리
+        leftx  = nonzerox[left_inds]
+        lefty  = nonzeroy[left_inds]
+        rightx = nonzerox[right_inds]
+        righty = nonzeroy[right_inds]
+
+        # 7) 2차 다항식 피팅
+        if len(leftx) < minpix or len(rightx) < minpix:
+            return False  # 픽셀 부족하면 직선으로 간주
+
+        left_fit  = np.polyfit(lefty,  leftx,  2)
+        right_fit = np.polyfit(righty, rightx, 2)
+
+        # 8) 곡률 계수(a) 평균
+        a_coeff = (left_fit[0] + right_fit[0]) / 2.0
+
+        # 9) threshold 판단 (실험적으로 1e-4 정도부터 커브로 봄)
+        curve_thresh = 1e-4
+        return abs(a_coeff) > curve_thresh
+
+
 
 def main():
     try:
