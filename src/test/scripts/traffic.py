@@ -11,20 +11,15 @@ class Traffic_Sub:
         self.traffic_msg = morai_msgs.GetTrafficLightStatus()
         self.traffic_flag = 0
         self.prev_signal = 0
+        self.traffic_signal = None
 
     def traffic_CB(self, msg):
         self.traffic_msg = msg
-        self.get_traffic_status(msg)
+        if self.traffic_msg.trafficLightIndex == "SN000005":
+            self.traffic_signal = msg.trafficLightStatus
+            
+            if self.traffic_signal != self.prev_signal:
+                self.prev_signal = self.traffic_signal
+                self.traffic_flag = 0
 
-    def get_traffic_status(self, msg):
-        signal = msg.trafficLightStatus
-
-        if signal == 1:
-            pass
-            # print(f"{msg.trafficLightIndex}: red")
-        elif signal == 4:
-            pass
-            # print(f"{msg.trafficLightIndex}: yellow")
-        elif signal == 16 or signal == 33:
-            pass
-            # print(f"{msg.trafficLightIndex}: green")
+            self.traffic_flag += 1
