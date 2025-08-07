@@ -7,7 +7,73 @@ from std_msgs.msg import Float64
 from cv_bridge import CvBridge
 import cv2
 import numpy as np
-import math
+
+class SlidingWindow:
+    def __init__(self):
+        self.left_fit = None
+        self.right_fit = None
+
+    def apply(self, binary_warped):
+        histogram = np.sum(binary_warped[binary_warped.shape[0]//2:, :], axis=0)
+        midpoint = np.int32(histogram.shape[0] // 2)
+        leftx_base = np.argmax(histogram[:midpoint])
+        rightx_base = np.argmax(histogram[midpoint:]) + midpoint
+
+        nwindows = 9
+        window_height = np.int32(binary_warped.shape[0] // nwindows)
+        nonzero = binary_warped.nonzero()
+        nonzeroy = np.array(nonzero[0])
+        nonzerox = np.array(nonzero[1])
+
+        leftx_current = leftx_base
+        rightx_current = rightx_base
+
+        margin = 100
+        minpix = 50
+
+        left_lane_inds = []
+        right_lane_inds = []
+
+        for window in range(nwindows):
+            win_y_low = binary_warped.shape[0] - (window + 1) * window_height
+            win_y_high = binary_warped.shape[0] - window * window_height
+            win_xleft_low = leftx_current - margin
+            win_xleft_high = leftx_current + margin
+            win_xright_low = rightx_current - margin
+            win_xright_high = rightx_current + margin
+
+            good_left_inds = ((nonzeroy >= win_y_low) & (nonzeroy < win_y_high) &
+                              (nonzerox >= win_xleft_low) & (nonzerox < win_xleft_high)).nonzero()[0]
+            good_right_inds = ((nonzeroy >= win_y_low) & (nonzeroy < win_y_high) &
+                               (nonzerox >= win_xright_low) & (nonzerox < win_xright_high)).nonzero()[0]
+
+            left_lane_inds.append(good_left_inds)
+            right_lane_inds.append(good_right_inds)
+
+            if len(good_left_inds) > minpix:
+                leftx_current = np.int32(np.mean(nonzerox[good_left_inds]))
+            if len(good_right_inds) > minpix:
+                rightx_current = np.int32(np.mean(nonzerox[good_right_inds]))
+
+        left_lane_inds = np.concatenate(left_lane_inds)
+        right_lane_inds = np.concatenate(right_lane_inds)
+
+        leftx = nonzerox[left_lane_inds]
+        lefty = nonzeroy[left_lane_inds]
+        rightx = nonzerox[right_lane_inds]
+        righty = nonzeroy[right_lane_inds]
+
+        if len(leftx) > 0 and len(lefty) > 0:
+            self.left_fit = np.polyfit(lefty, leftx, 2)
+        else:
+            self.left_fit = None
+
+        if len(rightx) > 0 and len(righty) > 0:
+            self.right_fit = np.polyfit(righty, rightx, 2)
+        else:
+            self.right_fit = None
+
+        return self.left_fit, self.right_fit
 
 class Lane_sub:
     def __init__(self):
@@ -19,16 +85,17 @@ class Lane_sub:
         self.bridge = CvBridge()
         self.steer_msg = Float64()
         self.speed_msg = Float64()
-        self.speed_msg.data = 1000  # 기본 속도
+
+        self.sliding = SlidingWindow()
 
     def cam_CB(self, msg):
         img = self.bridge.compressed_imgmsg_to_cv2(msg)
         hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
         self.height, self.width = img.shape[:2]
 
-        # 차선 색상 범위(노란색, 흰색)
+        # 차선 색상 범위 설정
         yellow_lower = np.array([15, 128, 0])
-        yellow_upper = np.array([45, 255, 255])
+        yellow_upper = np.array([40, 255, 255])
         white_lower = np.array([0, 0, 192])
         white_upper = np.array([179, 64, 255])
 
@@ -38,144 +105,70 @@ class Lane_sub:
         filtered = cv2.bitwise_and(img, img, mask=combined_mask)
 
         # 투시 변환
-        src = np.float32([
-            [0, 420],
-            [275, 260],
-            [self.width-275, 260],
-            [self.width, 420]
-        ])
-        dst = np.float32([
-            [self.width//8, 480],
-            [self.width//8, 0],
-            [self.width//8*7, 0],
-            [self.width//8*7, 480]
-        ])
+        x = self.width
+        src = np.float32([[0, 420], [275, 260], [x - 275, 260], [x, 420]])
+        dst = np.float32([[x // 8, 480], [x // 8, 0], [x // 8 * 7, 0], [x // 8 * 7, 480]])
         M = cv2.getPerspectiveTransform(src, dst)
         warped_img = cv2.warpPerspective(filtered, M, (self.width, self.height))
 
-        # 이진화
+        # 그레이 & 이진화
         gray = cv2.cvtColor(warped_img, cv2.COLOR_BGR2GRAY)
         bin_img = np.zeros_like(gray)
         bin_img[gray > 50] = 255
 
-        # 선 검출
-        edges = cv2.Canny(bin_img, 50, 150)
-        lines = cv2.HoughLinesP(edges, 1, np.pi/180, threshold=50, minLineLength=20, maxLineGap=15)
+        self.action(bin_img)
 
-        warped_color = warped_img.copy()
-        if lines is not None:
-            for line in lines:
-                x1, y1, x2, y2 = line[0]
-                cv2.line(warped_color, (x1, y1), (x2, y2), (0, 255, 0), 2)
-
-        self.setCenter(bin_img)
-
-        # 시각화
-        cv2.imshow("Warped + Lines", warped_color)
-        cv2.waitKey(1)
-
-
-    def setCenter(self, bin_img):
-        # 차선 중심 계산 (histogram 방식)
-        histogram = np.sum(bin_img[self.height//2:, :], axis=0)
-        midpoint = self.width // 2
-        lane_center = np.mean(np.where(histogram > 50)) if np.any(histogram > 50) else midpoint
-
-        # 조향 계산
-        is_curve = self.isCurve(bin_img)
-        print(is_curve)
-
-        if is_curve is False:
-            offset = (lane_center - midpoint) / midpoint
-            steer = 0.5 + offset * 0.4                   
-            steer = np.clip(steer, 0.0, 1.0)
-        else:
-            steer = 0.5
-
-        # 메시지 퍼블리시
-        self.steer_msg.data = steer
         self.steer_pub.publish(self.steer_msg)
         self.speed_pub.publish(self.speed_msg)
-        
 
-    def isCurve(self, bin_img):
-        """
-        bin_img 에서 슬라이딩 윈도우로 좌/우 차선 픽셀을 찾고
-        2차 다항식으로 피팅한 후, 계수 a 의 절댓값이 threshold 이상이면 커브로 판단.
-        """
-        # 1) nonzero 좌표
-        nonzero = bin_img.nonzero()
-        nonzeroy = np.array(nonzero[0])
-        nonzerox = np.array(nonzero[1])
+        # 시각화 (디버깅용)
+        cv2.imshow("Warped View", warped_img)
+        cv2.imshow("Binary Lane", bin_img)
+        cv2.waitKey(1)
 
-        # 2) 히스토그램 기반 시작점
-        histogram = np.sum(bin_img[self.height//2:, :], axis=0)
-        midpoint = histogram.shape[0] // 2
-        leftx_current  = np.argmax(histogram[:midpoint])
-        rightx_current = np.argmax(histogram[midpoint:]) + midpoint
+    def action(self, bin_img):
+        left_fit, right_fit = self.sliding.apply(bin_img)
 
-        # 3) 슬라이딩 윈도우 파라미터
-        nwindows = 9
-        window_height = np.int(self.height // nwindows)
-        margin = 100
-        minpix = 50
+        if left_fit is not None and right_fit is not None:
+            self.setSteeringinCurve(left_fit, right_fit)
+            self.speed_msg.data = 1000  # 곡선 구간
+        else:
+            self.setSteeringinStraight(bin_img)
+            self.speed_msg.data = 500   # 직선 구간
 
-        left_inds = []
-        right_inds = []
-        # 4) 윈도우마다 픽셀 인덱스 수집
-        for w in range(nwindows):
-            y_low  = self.height - (w+1)*window_height
-            y_high = self.height -  w   *window_height
-            x_l_low  = leftx_current  - margin
-            x_l_high = leftx_current  + margin
-            x_r_low  = rightx_current - margin
-            x_r_high = rightx_current + margin
+    def setSteeringinStraight(self, bin_img):
+        histogram = np.sum(bin_img[self.height // 2:, :], axis=0)
+        midpoint = self.width // 2
+        if np.any(histogram > 50):
+            lane_center = np.mean(np.where(histogram > 50))
+        else:
+            lane_center = midpoint
 
-            good_l = ((nonzeroy >= y_low) & (nonzeroy < y_high) &
-                      (nonzerox >= x_l_low) & (nonzerox < x_l_high)).nonzero()[0]
-            good_r = ((nonzeroy >= y_low) & (nonzeroy < y_high) &
-                      (nonzerox >= x_r_low) & (nonzerox < x_r_high)).nonzero()[0]
+        offset = (lane_center - midpoint) / midpoint
+        steer = 0.5 + offset * 0.4
+        steer = np.clip(steer, 0.0, 1.0)
+        self.steer_msg.data = steer
 
-            left_inds.append(good_l)
-            right_inds.append(good_r)
+    def setSteeringinCurve(self, left_fit, right_fit):
+        y_eval = int(self.height * 0.6)
+        left_x = np.polyval(left_fit, y_eval)
+        right_x = np.polyval(right_fit, y_eval)
+        lane_center = (left_x + right_x) / 2
+        img_center = self.width / 2
+        offset = (lane_center - img_center) / img_center
 
-            if len(good_l) > minpix:
-                leftx_current = np.int(np.mean(nonzerox[good_l]))
-            if len(good_r) > minpix:
-                rightx_current = np.int(np.mean(nonzerox[good_r]))
+        a = (left_fit[0] + right_fit[0]) / 2.0  # 곡률 정보
+        curvature_threshold = 2e-4
+        steer_base = 0.5 + offset * 0.8
 
-        # 5) 인덱스 합치기
-        left_inds  = np.concatenate(left_inds)
-        right_inds = np.concatenate(right_inds)
+        if abs(a) > curvature_threshold:
+            steer_base += np.sign(offset) * abs(a) * 18
 
-        # 6) 좌표 분리
-        leftx  = nonzerox[left_inds]
-        lefty  = nonzeroy[left_inds]
-        rightx = nonzerox[right_inds]
-        righty = nonzeroy[right_inds]
+        self.steer_msg.data = np.clip(steer_base, 0.0, 1.0)
 
-        # 7) 2차 다항식 피팅
-        if len(leftx) < minpix or len(rightx) < minpix:
-            return False  # 픽셀 부족하면 직선으로 간주
-
-        left_fit  = np.polyfit(lefty,  leftx,  2)
-        right_fit = np.polyfit(righty, rightx, 2)
-
-        # 8) 곡률 계수(a) 평균
-        a_coeff = (left_fit[0] + right_fit[0]) / 2.0
-
-        # 9) threshold 판단 (실험적으로 1e-4 정도부터 커브로 봄)
-        curve_thresh = 1e-4
-        return abs(a_coeff) > curve_thresh
-
-
-
-def main():
+if __name__ == "__main__":
     try:
         Lane_sub()
         rospy.spin()
     except rospy.ROSInterruptException:
         pass
-
-if __name__ == "__main__":
-    main()
