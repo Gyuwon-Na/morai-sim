@@ -7,6 +7,7 @@ from std_msgs.msg import Float64
 from cv_bridge import CvBridge
 import cv2
 import numpy as np
+import time
 
 class LaneFollower:
     def __init__(self):
