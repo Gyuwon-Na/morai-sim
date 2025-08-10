@@ -46,6 +46,21 @@ class Lane_sub:
         bin_img[gray > 50] = 255
 
         self.driving.action(self.width, self.height, bin_img)
+        
+        edges = cv2.Canny(bin_img, 50, 150)
+        lines = cv2.HoughLinesP(edges, 1, np.pi/180, threshold=50, minLineLength=20, maxLineGap=15)
+
+        left_lines, right_lines = [], []
+        if lines is not None:
+            for line in lines:
+                x1, y1, x2, y2 = line[0]
+                x_center = (x1 + x2) // 2
+
+                if x_center < self.width // 2:
+                    left_lines.append(x_center)
+                else:
+                    right_lines.append(x_center)
+                cv2.line(warped_img, (x1, y1), (x2, y2), (0, 255, 0), 2)
 
         # 시각화 (디버깅용)
         cv2.imshow("Warped View", warped_img)
