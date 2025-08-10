@@ -1,0 +1,27 @@
+global_costmap:
+  global_frame: map
+  robot_base_frame: base_link
+  update_frequency: 0.5 #1.0
+  publish_frequency: 0.25 #0.5
+  static_map: true
+  resolution: 0.1 # 코스트맵 해상도
+  transform_tolerance: 0.5 #로봇 프레임 간의 변환에 대한 허용 가능한 최대 시간 지연
+  inflation_radius: 0.09  #0.2
+
+  obstacle_layer:
+    enabled: true
+    obstacle_range: 5.5    #5.5
+    raytrace_range: 6.0    #6.0
+    track_unknown_space: true
+    combination_method: 1
+    observation_sources: laser_scan_sensor
+    laser_scan_sensor: {data_type: LaserScan, topic: scan, marking: true, clearing: true}
+
+
+    plugins:
+     - {name: static_layer,         type: "costmap_2d::StaticLayer"}
+     - {name: obstacle_layer,       type: "costmap_2d::voxelLayer"}
+     - {name: inflation_layer,      type: "costmap_2d::InflationLayer"}
+
+
+#inflation_radius: 0.12  #0.2
