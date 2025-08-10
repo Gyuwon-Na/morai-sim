@@ -33,10 +33,13 @@ class AutonomousDriving:
         self.detect_stop_line(bin_img)
         self.traffic_signal()
 
-        if left_fit is not None and right_fit is not None:
-            self.setSteeringinCurve(left_fit, right_fit)
-        else:
-            self.setSteeringinStraight(bin_img)
+        try:
+            if left_fit is not None and right_fit is not None:
+                self.setSteeringinCurve(left_fit, right_fit)
+            else:
+                self.setSteeringinStraight(bin_img)
+        except Exception as e:
+            pass
         
         self.steer_pub.publish(self.steer_msg)
         self.speed_pub.publish(self.speed_msg)
@@ -77,13 +80,14 @@ class AutonomousDriving:
         if signal == 1:  # 빨간불
             if self.stop_line_detected and self.stop_line_distance <= 0.3:
                 self.speed_msg.data = 0  # 정지선 0.3m 이내에서만 정지
-                print("Stop at red light")
             elif self.stop_line_detected and self.stop_line_distance <= 1.0:
                 self.speed_msg.data = 300  # 정지선 근처에서 감속
-                print("Slow down at red light")
             else:
                 self.speed_msg.data = 500
-                print("Approaching red light, but not at stop line")
+        elif signal == 4:
+            self.speed_msg.data = 300
+        elif signal == 16 or signal == 33:
+            self.speed_msg.data = 1000
 
 
     def detect_stop_line(self, bin_img):
