@@ -30,8 +30,8 @@ class AutonomousDriving:
         left_fit, right_fit = self.sliding.apply(bin_img)
 
 
-        self.detect_stop_line(bin_img)
-        self.traffic_signal()
+        # self.detect_stop_line(bin_img)
+        # self.traffic_signal()
 
         try:
             if left_fit is not None and right_fit is not None:
@@ -45,38 +45,9 @@ class AutonomousDriving:
         self.speed_pub.publish(self.speed_msg)
 
 
-#########    직선구간에서 선 안잡힐 때      ##########
-
-    # def action(self, width, height, bin_img):
-    #     self.width = width
-    #     self.height = height
-
-    #     with warnings.catch_warnings(record=True) as w:
-    #         warnings.simplefilter("always")  # 모든 경고를 기록하도록
-    #         left_fit, right_fit = self.sliding.apply(bin_img)
-
-    #         # RankWarning 발생 여부 체크
-    #         rank_warning_occurred = any(item.category == np.RankWarning for item in w)
-
-    #     if rank_warning_occurred:
-    #         # 경고 발생 시 직선으로 판단
-    #         self.setSteeringinStraight(bin_img)
-    #     else:
-    #         try:
-    #             if left_fit is not None and right_fit is not None:
-    #                 self.setSteeringinCurve(left_fit, right_fit)
-    #             else:
-    #                 self.setSteeringinStraight(bin_img)
-    #         except Exception as e:
-    #             self.setSteeringinStraight(bin_img)
-
-    #     self.steer_pub.publish(self.steer_msg)
-    #     self.speed_pub.publish(self.speed_msg)
-
-
     def traffic_signal(self):
         signal = self.traffic_sub.traffic_signal
-        print(self.stop_line_distance, "m away")
+        # print(self.stop_line_distance, "m away")
         if signal == 1:  # 빨간불
             if self.stop_line_detected and self.stop_line_distance <= 0.3:
                 self.speed_msg.data = 0  # 정지선 0.3m 이내에서만 정지
@@ -137,8 +108,8 @@ class AutonomousDriving:
             self.stop_line_distance = pixels_to_bottom * self.pixel_to_meter
             self.stop_line_detected = True
             self.last_valid_distance = self.stop_line_distance  # 유효한 거리 저장
-            
-            print(f"Pixels from bottom: {pixels_to_bottom}, Distance: {self.stop_line_distance:.3f}m")
+
+            # print(f"Pixels from bottom: {pixels_to_bottom}, Distance: {self.stop_line_distance:.3f}m")
         else:
             # 정지선이 검출되지 않았지만 이전에 가까운 거리에서 검출되었다면
             if self.last_valid_distance < 1.0:
@@ -149,11 +120,11 @@ class AutonomousDriving:
                 else:
                     self.stop_line_distance = self.last_valid_distance
                 self.stop_line_detected = True
-                print(f"Stop line not visible but estimated vehicle front distance: {estimated_distance:.3f}m")
+                # print(f"Stop line not visible but estimated vehicle front distance: {estimated_distance:.3f}m")
             else:
                 self.stop_line_detected = False
                 self.stop_line_distance = float('inf')
-                print("No stop line detected")  
+                # print("No stop line detected")  
 
     def setSteeringinStraight(self, bin_img):
         histogram = np.sum(bin_img[self.height // 2:, :], axis=0)
