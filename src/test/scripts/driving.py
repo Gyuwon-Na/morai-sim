@@ -4,14 +4,17 @@
 import rospy
 from std_msgs.msg import Float64
 import numpy as np
-import sliding_window as sliding_window
-import traffic as traffic_sub
+import sliding_window
+import traffic
+import detect_obstacle
 import cv2
 
 class AutonomousDriving:
     def __init__(self):
         self.sliding = sliding_window.SlidingWindow()
-        self.traffic_sub = traffic_sub.Traffic_Sub()
+        self.traffic_sub = traffic.Traffic_Sub()
+        # self.lidar_sub = detect_obstacle.LidarSub()
+        
         self.steer_pub = rospy.Publisher("/commands/servo/position", Float64, queue_size=1)
         self.speed_pub = rospy.Publisher("/commands/motor/speed", Float64, queue_size=1)
         self.steer_msg = Float64()
@@ -29,10 +32,6 @@ class AutonomousDriving:
         self.height = height
         left_fit, right_fit = self.sliding.apply(bin_img)
 
-
-        # self.detect_stop_line(bin_img)
-        # self.traffic_signal()
-
         try:
             if left_fit is not None and right_fit is not None:
                 self.setSteeringinCurve(left_fit, right_fit)
@@ -40,6 +39,10 @@ class AutonomousDriving:
                 self.setSteeringinStraight(bin_img)
         except Exception as e:
             pass
+
+        # # self.detect_stop_line(bin_img)
+        # # self.traffic_signal()
+
         
         self.steer_pub.publish(self.steer_msg)
         self.speed_pub.publish(self.speed_msg)
