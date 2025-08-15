@@ -2,11 +2,11 @@
 # -*- coding: utf-8 -*-
 
 import rospy
-from warped_img import Lane_sub
+from camera import WarpedImg
 
 if __name__ == "__main__":
     try:
-        lane_sub = Lane_sub()
+        lane_sub = WarpedImg.Lane_sub()
         rospy.spin()
     except rospy.ROSInterruptException:
         pass
