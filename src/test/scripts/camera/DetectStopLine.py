@@ -89,3 +89,6 @@ class StopLine:
                 self.stop_line_detected = False
                 self.stop_line_distance = float('inf')
                 # print("No stop line detected")  
+
+    def isStop(self):
+        return self.stop_line_detected

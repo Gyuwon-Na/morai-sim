@@ -15,6 +15,8 @@ class Mission(Enum):
     FIRST_CORNER = 2        # 첫 번째 코너 진입
     SECOND_CORNER = 3       # 두 번째 코너 진입
     ENTRY_ROTARY = 4       # 로터리 진입
+    EXIT_ROTARY = 5        # 로터리 탈출
+    TRAFFICLIGHT = 6
 
 class AutonomousDriving:
     def __init__(self):
@@ -26,10 +28,11 @@ class AutonomousDriving:
         self.steer_msg = Float64()
         self.speed_msg = Float64()
         self.speed_msg.data = 1500 # Default speed
-        self.mission_flag = 1
-        self.mission_completed = [True, True, True, False, False]  # 각 미션 완료 여부를 저장하는 리스트
-        # self.mission_completed = [False] * 5  # 각 미션 완료 여부를 저장하는 리스트
+        self.mission_flag = Mission.STRAIGHT.value
 
+        # self.mission_completed = [True, True, True, False, False]  # 각 미션 완료 여부를 저장하는 리스트
+        self.mission_completed = [False] * 5  # 각 미션 완료 여부를 저장하는 리스트
+        
 
     def action(self, width, height, bin_img):
         self.width = width
@@ -38,7 +41,6 @@ class AutonomousDriving:
 
 
         # self.detect_stop_line(bin_img)
-        # self.traffic_signal()
 
         self.stop_line_detector.detect(width,height,bin_img)
 
@@ -79,7 +81,22 @@ class AutonomousDriving:
                 pass
 
         elif self.mission_flag == Mission.ENTRY_ROTARY.value:
-            print("ENTRY ROTARY")
+            print("Enter to Rotary")
+            
+            # self.setSteeringinRotary(left_fit, right_fit)
+
+            self.rotary.run()
+            
+            if self.rotary.is_finished:
+                self.mission_flag = Mission.EXIT_ROTARY.value
+                self.mission_completed[3] = True
+        
+        elif self.mission_flag == Mission.EXIT_ROTARY.value:
+            print("Escape Rotary")
+            # self.traffic_signal()
+
+
+            
             
             
         # try:
@@ -95,20 +112,20 @@ class AutonomousDriving:
 
 
 
-    # def traffic_signal(self):
-    #     signal = self.traffic_sub.traffic_signal
-    #     # print(self.stop_line_distance, "m away")
-    #     if signal == 1:  # 빨간불
-    #         if self.stop_line_detected and self.stop_line_distance <= 0.3:
-    #             self.speed_msg.data = 0  # 정지선 0.3m 이내에서만 정지
-    #         elif self.stop_line_detected and self.stop_line_distance <= 1.0:
-    #             self.speed_msg.data = 300  # 정지선 근처에서 감속
-    #         else:
-    #             self.speed_msg.data = 500
-    #     elif signal == 4:
-    #         self.speed_msg.data = 300
-    #     elif signal == 16 or signal == 33:
-    #         self.speed_msg.data = 1000
+    def traffic_signal(self):
+        signal = self.traffic_sub.traffic_signal
+        # print(self.stop_line_distance, "m away")
+        if signal == 1:  # 빨간불
+            if self.stop_line_detector.stop_line_detected and self.stop_line_detector.stop_line_distance <= 0.3:
+                self.speed_msg.data = 0  # 정지선 0.3m 이내에서만 정지
+            elif self.stop_line_detector.stop_line_detected and self.stop_line_detector.stop_line_distance <= 1.0:
+                self.speed_msg.data = 300  # 정지선 근처에서 감속
+            else:
+                self.speed_msg.data = 500
+        elif signal == 4:
+            self.speed_msg.data = 300
+        elif signal == 16 or signal == 33:
+            self.speed_msg.data = 1000
 
 
     def setSteeringinStraight(self, bin_img):
