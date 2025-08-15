@@ -1,38 +1,43 @@
 <launch>
-  <!-- param name="use_sim_time" value="true"/> -->
+    <!-- <param name="use_sim_time" value="true"/> -->
     <node pkg="gmapping" type="slam_gmapping" name="slam_gmapping" output="screen">
-     <!-- <remap from="scan" to="base_scan"/> -->
+      <!-- <remap from="scan" to="base_scan"/> -->
       <param name="base_frame" value="base_link"/>
       <param name="odom_frame" value="odom"/>
       <param name="map_frame" value="map"/>
 
-      <param name="map_update_interval" value="5.0"/>
-      <param name="maxUrange" value="16.0"/>
-      <param name="sigma" value="0.05"/>
-      <param name="kernelSize" value="1"/>
-      <param name="lstep" value="0.05"/>
-      <param name="astep" value="0.05"/>
-      <param name="iterations" value="5"/>
-      <param name="lsigma" value="0.075"/>
-      <param name="ogain" value="3.0"/>
-      <param name="lskip" value="0"/>
-      <param name="srr" value="0.1"/>
-      <param name="srt" value="0.2"/>
-      <param name="str" value="0.1"/>
-      <param name="stt" value="0.2"/>
-      <param name="linearUpdate" value="1.0"/>
-      <param name="angularUpdate" value="0.5"/>
-      <param name="temporalUpdate" value="3.0"/>
-      <param name="resampleThreshold" value="0.5"/>
-      <param name="particles" value="30"/>
-      <param name="xmin" value="-50.0"/>
-      <param name="ymin" value="-50.0"/>
-      <param name="xmax" value="50.0"/>
-      <param name="ymax" value="50.0"/>
-      <param name="delta" value="0.05"/>
-      <param name="llsamplerange" value="0.01"/>
-      <param name="llsamplestep" value="0.01"/>
-      <param name="lasamplerange" value="0.005"/>
-      <param name="lasamplestep" value="0.005"/>
+      <param name="map_update_interval" value="3.0"/> <!-- 5초에 한번씩 맵 업데이트-->
+      <param name="maxUrange" value="16.0"/> <!-- 라이다를 사용하여 인식할 수 있는 최대거리 설정 -->
+      <param name="sigma" value="0.05"/> <!-- greedy end point matching 알고리즘에 사용되는 표준편차 -->
+      <param name="kernelSize" value="1"/> <!-- 매칭을 찾을 때 사용되는 커널의 크기(클수록 더 많은 영역) -->
+      <param name="lstep" value="0.05"/> <!-- 위치 step(단위)에 대한 설정 파라미터 -->
+      <param name="astep" value="0.05"/> <!-- 회전 step 에 대한 설정 파라미터 -->
+      <param name="iterations" value="5"/> <!-- scan matching 을 할때 반복할 숫자 값-->
+      <param name="lsigma" value="0.075"/> <!-- 측정한 데이터의 불확실성을 나타내는 가중치 값의 설정 파라미터-->
+      <param name="ogain" value="3.0"/> <!-- 리샘플링 할때의 가중치 파라미터 값(클수록 정확, 작을수록 안정)-->
+      <param name="lskip" value="0"/> <!-- 라이다 데이터에서 무시할 데이터의 개수 -->
+      <param name="srr" value="0.1"/> 
+      <param name="srt" value="0.2"/> 
+      <param name="str" value="0.1"/> 
+      <param name="stt" value="0.2"/> 
+      <param name="linearUpdate" value="1.0"/>  
+      <param name="angularUpdate" value="0.5"/> 
+      <param name="temporalUpdate" value="3.0"/> 
+      <param name="resampleThreshold" value="0.5"/> 
+      <param name="particles" value="30"/> 
+      <param name="xmin" value="-50.0"/> 
+      <param name="ymin" value="-50.0"/> 
+      <param name="xmax" value="50.0"/> 
+      <param name="ymax" value="50.0"/> 
+      <param name="delta" value="0.05"/> 
+      <param name="llsamplerange" value="0.01"/> 
+      <param name="llsamplestep" value="0.01"/> 
+      <param name="lasamplerange" value="0.005"/> 
+      <param name="lasamplestep" value="0.005"/> 
     </node>
+
+      <node name="rviz" pkg="rviz" type="rviz" args="-d $(find wego)/rviz/slam.rviz" />
 </launch>
+
+<!-- 설명 : https://wiki.ros.org/gmapping  -->
+<!-- minimumscore :스캔 매칭을 사용할 때의 최소 임계점수 (높을수록 높은신뢰도의 데이터만 사용) -->
