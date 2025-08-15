@@ -17,18 +17,22 @@ class Mission(Enum):
     ENTRY_ROTARY = 4       # 로터리 진입
     EXIT_ROTARY = 5        # 로터리 탈출
     TRAFFICLIGHT = 6
+    THIRD_CORNER = 7
 
 class AutonomousDriving:
     def __init__(self):
         self.sliding = SlidingWindow.SlidingWindow()
         self.stop_line_detector = DetectStopLine.StopLine()
         self.traffic_sub = Traffic.Traffic()
+
         self.steer_pub = rospy.Publisher("/commands/servo/position", Float64, queue_size=1)
         self.speed_pub = rospy.Publisher("/commands/motor/speed", Float64, queue_size=1)
+
         self.steer_msg = Float64()
         self.speed_msg = Float64()
+
         self.speed_msg.data = 1500 # Default speed
-        self.mission_flag = Mission.STRAIGHT.value
+        self.mission_flag = Mission.TRAFFICLIGHT.value
 
         # self.mission_completed = [True, True, True, False, False]  # 각 미션 완료 여부를 저장하는 리스트
         self.mission_completed = [False] * 5  # 각 미션 완료 여부를 저장하는 리스트
@@ -85,20 +89,42 @@ class AutonomousDriving:
             
             # self.setSteeringinRotary(left_fit, right_fit)
 
-            self.rotary.run()
+            # self.rotary.run()
             
-            if self.rotary.is_finished:
-                self.mission_flag = Mission.EXIT_ROTARY.value
-                self.mission_completed[3] = True
+            # if self.rotary.is_finished:
+            #     self.mission_flag = Mission.EXIT_ROTARY.value
+            #     self.mission_completed[3] = True
         
         elif self.mission_flag == Mission.EXIT_ROTARY.value:
             print("Escape Rotary")
-            # self.traffic_signal()
+            self.mission_flag = Mission.TRAFFICLIGHT.value
+
+        elif self.mission_flag == Mission.TRAFFICLIGHT.value:
+            print("At Traffic Light")
+            self.traffic_signal()
+            if left_fit is not None and right_fit is not None:
+                self.setSteeringinCurve(left_fit, right_fit)
+            else:
+                self.setSteeringinStraight(bin_img)
+
+            if self.stop_line_detector.stop_line_num == 7:
+                self.mission_completed[4] = True  # 5번째 미션 완료
+                self.mission_flag = Mission.THIRD_CORNER.value  # 세번째 코너로 이동
+
+        elif self.mission_flag == Mission.THIRD_CORNER.value:
+            print("THIRD CORNER")
+            try:
+                if left_fit is not None and right_fit is not None:
+                    self.setSteeringinCurve(left_fit, right_fit)
+                else:
+                    self.setSteeringinStraight(bin_img)
+            except Exception as e:
+                pass
+
+            if self.stop_line_detector.stop_line_num == 8:
+                self.mission_flag = Mission.STRAIGHT.value  # 세번째 코너 탈출 후 직진으로 복귀
 
 
-            
-            
-            
         # try:
         #     if left_fit is not None and right_fit is not None:
         #         self.setSteeringinCurve(left_fit, right_fit)
