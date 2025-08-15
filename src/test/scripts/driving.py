@@ -5,13 +5,13 @@ import rospy
 from std_msgs.msg import Float64
 import numpy as np
 import sliding_window as sliding_window
-import traffic as traffic_sub
+import traffic
 import cv2
 
 class AutonomousDriving:
     def __init__(self):
         self.sliding = sliding_window.SlidingWindow()
-        self.traffic_sub = traffic_sub.Traffic_Sub()
+        self.traffic_sub = traffic.Traffic_Sub()
         self.steer_pub = rospy.Publisher("/commands/servo/position", Float64, queue_size=1)
         self.speed_pub = rospy.Publisher("/commands/motor/speed", Float64, queue_size=1)
         self.steer_msg = Float64()
