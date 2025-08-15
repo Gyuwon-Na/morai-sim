@@ -215,3 +215,32 @@ class AutonomousDriving:
             steer_base += np.sign(offset) * abs(a) * 18
 
         self.steer_msg.data = np.clip(steer_base, 0.0, 1.0)
+
+    def setSteeringForInnerRightTurn(self, right_fit):
+        """
+        [신규] 안쪽(오른쪽) 차선을 기준으로 일정한 거리를 유지하며 우회전하는 함수
+        """
+        # 튜닝 포인트: 차량 중심이 안쪽 차선에서 떨어져야 할 이상적인 거리 (픽셀 단위)
+        # 이 값을 조절하여 회전 반경을 조절할 수 있습니다.
+        DESIRED_OFFSET_PIXELS = 120  # 예시 값, 주행해보며 튜닝 필요
+
+        # 차선 인식을 위한 기준 높이 (화면의 70% 지점)
+        y_eval = int(self.height * 0.7)
+        
+        # 해당 높이에서 오른쪽 차선의 x좌표 계산
+        right_x = np.polyval(right_fit, y_eval)
+        
+        # 목표 주행 지점 설정: 오른쪽 차선 위치 - 이상적인 오프셋
+        target_x = right_x - DESIRED_OFFSET_PIXELS
+        
+        # 차량의 현재 중심(이미지 중앙)
+        img_center = self.width / 2
+        
+        # 목표 지점과 현재 중심 사이의 오차 계산
+        offset = target_x - img_center
+
+        # 오차를 기반으로 조향각 계산 (게인 값 0.9로 약간 더 민감하게 설정)
+        steer = 0.5 + (offset / img_center) * 0.9
+        
+        self.steer_msg.data = np.clip(steer, 0.0, 1.0)
+        print(f"Inner Right Turn... Target X: {target_x:.1f}, Steer: {self.steer_msg.data:.2f}")
