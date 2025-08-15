@@ -6,7 +6,7 @@ from sensor_msgs.msg import CompressedImage
 from cv_bridge import CvBridge
 import cv2
 import numpy as np
-import driving as driving
+import driving
 
 class Lane_sub:
     def __init__(self):
