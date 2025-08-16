@@ -18,6 +18,7 @@ class Mission(Enum):
     ROTARY = 4       # 로터리 진입
     TRAFFICLIGHT = 5
     THIRD_CORNER = 6
+    FINISH = 7
 
 class AutonomousDriving:
     def __init__(self):
@@ -33,7 +34,7 @@ class AutonomousDriving:
         self.speed_msg = Float64()
 
         self.speed_msg.data = 1500 # Default speed
-        self.mission_flag = Mission.TRAFFICLIGHT.value
+        self.mission_flag = Mission.STRAIGHT.value
         self.current_lane = 'UNKNOWN'
 
         # self.mission_completed = [True, True, True, False, False]  # 각 미션 완료 여부를 저장하는 리스트
@@ -63,6 +64,8 @@ class AutonomousDriving:
                 self.mission_flag = Mission.SECOND_CORNER.value
             elif self.stop_lane_detector.stop_line_num == 5:
                 self.mission_flag = Mission.ROTARY.value
+            elif self.stop_lane_detector.stop_line_num == 9:
+                self.mission_flag = Mission.FINISH.value
 
         elif self.mission_flag == Mission.FIRST_CORNER.value:
             print("FIRST CORNER")
@@ -144,8 +147,6 @@ class AutonomousDriving:
                     self.rotary_state = 0 # 로터리 상태 초기화
 
         elif self.mission_flag == Mission.TRAFFICLIGHT.value:
-            print("At Traffic Light")
-            
             self.current_lane = self.check_current_lane(bin_img)
             print(f"At Traffic Light, Current Lane: {self.current_lane}")
 
@@ -168,6 +169,8 @@ class AutonomousDriving:
             if self.stop_lane_detector.stop_line_num == 8:
                 self.mission_flag = Mission.STRAIGHT.value  # 세번째 코너 탈출 후 직진으로 복귀
 
+        elif self.mission_flag == Mission.FINISH.value:
+            print("FINISH LINE")
 
         # try:
         #     if left_fit is not None and right_fit is not None:
@@ -196,6 +199,11 @@ class AutonomousDriving:
             self.speed_msg.data = 300
         elif signal == 16 or signal == 33:
             self.speed_msg.data = 1000
+
+            # if self.current_lane == 'INNER':
+            #     print("Inner Lane Detected, Adjusting Steering for Right Turn")
+            # elif self.current_lane == 'OUTER':
+            #     print("Outer Lane Detected, Adjusting Steering for Left Turn")
 
     def setSteeringinStraight(self, bin_img):
         """
