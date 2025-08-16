@@ -4,7 +4,7 @@
 import cv2, rospy
 import numpy as np
 
-class StopLine:
+class StopLane:
     def __init__(self):
         self.stop_line_detected = False
         self.stop_line_distance = float('inf')

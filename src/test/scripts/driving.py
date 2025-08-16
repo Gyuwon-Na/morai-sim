@@ -6,7 +6,7 @@ from std_msgs.msg import Float64
 import numpy as np
 from camera import SlidingWindow
 from control import Traffic
-from camera import DetectStopLine
+from camera import DetectLane
 import cv2
 from enum import Enum
 
@@ -22,7 +22,7 @@ class Mission(Enum):
 class AutonomousDriving:
     def __init__(self):
         self.sliding = SlidingWindow.SlidingWindow()
-        self.stop_line_detector = DetectStopLine.StopLine()
+        self.stop_lane_detector = DetectLane.StopLane()
         self.traffic_sub = Traffic.Traffic()
 
         self.steer_pub = rospy.Publisher("/commands/servo/position", Float64, queue_size=1)
@@ -32,7 +32,7 @@ class AutonomousDriving:
         self.speed_msg = Float64()
 
         self.speed_msg.data = 1500 # Default speed
-        self.mission_flag = Mission.TRAFFICLIGHT.value
+        self.mission_flag = Mission.STRAIGHT.value
 
         # self.mission_completed = [True, True, True, False, False]  # 각 미션 완료 여부를 저장하는 리스트
         self.mission_completed = [False] * 5  # 각 미션 완료 여부를 저장하는 리스트
@@ -46,17 +46,17 @@ class AutonomousDriving:
 
         # self.detect_stop_line(bin_img)
 
-        self.stop_line_detector.detect(width,height,bin_img)
+        self.stop_lane_detector.detect(width,height,bin_img)
 
 
         if self.mission_flag == Mission.STRAIGHT.value:
             print("STRAIGHT LINE")
             self.setSteeringinStraight(bin_img)
-            if self.stop_line_detector.stop_line_num == 3:
+            if self.stop_lane_detector.stop_line_detected or self.stop_lane_detector.stop_line_num == 3:
                 self.mission_flag = Mission.FIRST_CORNER.value
-            elif self.stop_line_detector.stop_line_num == 4 and self.mission_completed[2] == True: # 두번째 코너 확인하기 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1
+            elif self.stop_lane_detector.stop_line_num == 4 and self.mission_completed[2] == True: # 두번째 코너 확인하기 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1
                 self.mission_flag = Mission.SECOND_CORNER.value
-            elif self.stop_line_detector.stop_line_num == 5:
+            elif self.stop_lane_detector.stop_line_num == 5:
                 self.mission_flag = Mission.ENTRY_ROTARY.value
 
         elif self.mission_flag == Mission.FIRST_CORNER.value:
@@ -107,7 +107,7 @@ class AutonomousDriving:
             else:
                 self.setSteeringinStraight(bin_img)
 
-            if self.stop_line_detector.stop_line_num == 7:
+            if self.stop_lane_detector.stop_line_num == 7:
                 self.mission_completed[4] = True  # 5번째 미션 완료
                 self.mission_flag = Mission.THIRD_CORNER.value  # 세번째 코너로 이동
 
@@ -121,7 +121,7 @@ class AutonomousDriving:
             except Exception as e:
                 pass
 
-            if self.stop_line_detector.stop_line_num == 8:
+            if self.stop_lane_detector.stop_line_num == 8:
                 self.mission_flag = Mission.STRAIGHT.value  # 세번째 코너 탈출 후 직진으로 복귀
 
 
@@ -142,9 +142,9 @@ class AutonomousDriving:
         signal = self.traffic_sub.traffic_signal
         # print(self.stop_line_distance, "m away")
         if signal == 1:  # 빨간불
-            if self.stop_line_detector.stop_line_detected and self.stop_line_detector.stop_line_distance <= 0.3:
+            if self.stop_lane_detector.stop_line_detected and self.stop_lane_detector.stop_line_distance <= 0.3:
                 self.speed_msg.data = 0  # 정지선 0.3m 이내에서만 정지
-            elif self.stop_line_detector.stop_line_detected and self.stop_line_detector.stop_line_distance <= 1.0:
+            elif self.stop_lane_detector.stop_line_detected and self.stop_lane_detector.stop_line_distance <= 1.0:
                 self.speed_msg.data = 300  # 정지선 근처에서 감속
             else:
                 self.speed_msg.data = 500
