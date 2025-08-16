@@ -45,7 +45,7 @@ class Lane_sub:
         bin_img = np.zeros_like(gray)
         bin_img[gray > 50] = 255
 
-        self.driving.action(self.width, self.height, bin_img)
+        self.driving.action(self.width, self.height, warped_img, bin_img)
         
         edges = cv2.Canny(bin_img, 50, 150)
         lines = cv2.HoughLinesP(edges, 1, np.pi/180, threshold=50, minLineLength=20, maxLineGap=15)

@@ -78,16 +78,17 @@ class StopLane:
             # 정지선이 검출되지 않았지만 이전에 가까운 거리에서 검출되었다면
             if self.last_valid_distance < 1.0:
                 # 카메라에서는 안 보이지만 차량 전면은 정지선 근처
-                estimated_distance = self.last_valid_distance - self.camera_offset
-                if estimated_distance <= 0.0:
+                self.estimated_distance = self.last_valid_distance - self.camera_offset
+                if self.estimated_distance <= 0.0:
                     self.stop_line_distance = self.camera_offset  # 카메라 오프셋만큼 떨어져 있음
                 else:
                     self.stop_line_distance = self.last_valid_distance
                 self.stop_line_detected = True
-                # print(f"Stop line not visible but estimated vehicle front distance: {estimated_distance:.3f}m")
+                print(f"Stop line not visible but estimated vehicle front distance: {self.estimated_distance:.3f}m")
             else:
                 self.stop_line_detected = False
                 self.stop_line_distance = float('inf')
+                self.estimated_distance = 0.0
                 # print("No stop line detected")  
 
     def isStop(self):
@@ -195,3 +196,39 @@ class CurveLane:
             bool: 커브가 감지되었으면 True, 아니면 False
         """
         return self.curve_detected
+    
+
+class YellowLaneDetector:
+    def __init__(self):
+        self.yellow_lane_detected = False
+        # 노란색을 검출할 HSV 색상 범위 (튜닝 필요)
+        self.lower_yellow = np.array([15, 100, 100])
+        self.upper_yellow = np.array([40, 255, 255])
+
+    def detect(self, original_img):
+        """
+        원본 컬러 이미지에서 노란색 차선을 감지합니다.
+        
+        Args:
+            original_img (numpy.ndarray): 왜곡 보정만 거친 원본 컬러 이미지
+        """
+        # 1. 이미지를 HSV 색상 공간으로 변환
+        hsv_img = cv2.cvtColor(original_img, cv2.COLOR_BGR2HSV)
+        
+        # 2. 지정된 HSV 범위로 마스크 생성
+        yellow_mask = cv2.inRange(hsv_img, self.lower_yellow, self.upper_yellow)
+        
+        # 3. 이미지 하단 영역만 ROI로 설정하여 노이즈 줄이기
+        height = original_img.shape[0]
+        roi = yellow_mask[height-150:, :] # 이미지 하단 150px 영역만 확인
+        
+        # 4. ROI 내에 노란색 픽셀이 일정 개수 이상이면 감지된 것으로 판단
+        nonzero_count = np.count_nonzero(roi)
+        # print(f"Yellow pixels detected: {nonzero_count}") # 디버깅용
+        
+        if nonzero_count > 100:  # 임계값, 튜닝 필요
+            self.yellow_lane_detected = True
+        else:
+            self.yellow_lane_detected = False
+            
+        return self.yellow_lane_detected

@@ -9,20 +9,21 @@ from control import Traffic
 from camera import DetectLane
 import cv2
 from enum import Enum
+import time
 
 class Mission(Enum):
     STRAIGHT = 1                  # 일반 차선 추종 주행
     FIRST_CORNER = 2        # 첫 번째 코너 진입
     SECOND_CORNER = 3       # 두 번째 코너 진입
-    ENTRY_ROTARY = 4       # 로터리 진입
-    EXIT_ROTARY = 5        # 로터리 탈출
-    TRAFFICLIGHT = 6
-    THIRD_CORNER = 7
+    ROTARY = 4       # 로터리 진입
+    TRAFFICLIGHT = 5
+    THIRD_CORNER = 6
 
 class AutonomousDriving:
     def __init__(self):
         self.sliding = SlidingWindow.SlidingWindow()
         self.stop_lane_detector = DetectLane.StopLane()
+        self.yellow_lane_detector = DetectLane.YellowLaneDetector()
         self.traffic_sub = Traffic.Traffic()
 
         self.steer_pub = rospy.Publisher("/commands/servo/position", Float64, queue_size=1)
@@ -36,9 +37,12 @@ class AutonomousDriving:
 
         # self.mission_completed = [True, True, True, False, False]  # 각 미션 완료 여부를 저장하는 리스트
         self.mission_completed = [False] * 5  # 각 미션 완료 여부를 저장하는 리스트
+
+        self.rotary_state = 1       # 로터리 내 하위 상태 
+        self.rotary_entry_time = 0  # 상태 전환을 위한 타이머
         
 
-    def action(self, width, height, bin_img):
+    def action(self, width, height, warped_img, bin_img):
         self.width = width
         self.height = height
         left_fit, right_fit = self.sliding.apply(bin_img)
@@ -56,8 +60,8 @@ class AutonomousDriving:
                 self.mission_flag = Mission.FIRST_CORNER.value
             elif self.stop_lane_detector.stop_line_num == 4 and self.mission_completed[2] == True: # 두번째 코너 확인하기 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1
                 self.mission_flag = Mission.SECOND_CORNER.value
-            elif self.stop_lane_detector.stop_line_num == 5:
-                self.mission_flag = Mission.ENTRY_ROTARY.value
+            elif self.stop_lane_detector.stop_line_num == 1:
+                self.mission_flag = Mission.ROTARY.value
 
         elif self.mission_flag == Mission.FIRST_CORNER.value:
             print("FIRST CORNER")
@@ -84,20 +88,59 @@ class AutonomousDriving:
             except Exception as e:
                 pass
 
-        elif self.mission_flag == Mission.ENTRY_ROTARY.value:
-            print("Enter to Rotary")
-            
-            # self.setSteeringinRotary(left_fit, right_fit)
+        elif self.mission_flag == Mission.ROTARY.value:
+            print(f"Enter to Rotary, State: {self.rotary_state}")
 
-            # self.rotary.run()
-            
-            # if self.rotary.is_finished:
-            #     self.mission_flag = Mission.EXIT_ROTARY.value
-            #     self.mission_completed[3] = True
-        
-        elif self.mission_flag == Mission.EXIT_ROTARY.value:
-            print("Escape Rotary")
-            self.mission_flag = Mission.TRAFFICLIGHT.value
+            # ----------------------------------------------------
+            # 상태 0: 로터리 진입 시 장애물이 있으면 일단 정지
+            # ----------------------------------------------------   
+            if self.rotary_state == 0:
+                pass
+
+            # ----------------------------------------------------
+            # 상태 1: 로터리 진입 (장애물이 없을 때, 회전 타이밍 감지하기 위함)
+            # ----------------------------------------------------
+            elif self.rotary_state == 1:
+                self.speed_msg.data = 800  # 1. 속도 감속
+                self.steer_msg.data = 0.5
+                
+                # 타이머 시작 (최초 진입 시 1회만)
+                if self.rotary_entry_time == 0:
+                    self.rotary_entry_time = time.time()
+
+                # 약 1.5초간 대각선으로 진입 후 다음 상태로 전환
+                if self.stop_lane_detector.estimated_distance <= -0.1:
+                    self.rotary_state = 2
+                    self.rotary_entry_time = 0 # 타이머 초기화
+
+            # ----------------------------------------------------
+            # 상태 2: 로터리 횡단 (회전 후 직진하며 노란선 찾기)
+            # ----------------------------------------------------
+            elif self.rotary_state == 2:
+                self.speed_msg.data = 1000 # 횡단 속도
+                self.steer_msg.data = 0.77  # 진입 시 보다 좀 더 틀기
+
+                # 3. 노란색 라인 검출
+                is_yellow_found = self.yellow_lane_detector.detect(warped_img)
+
+                if is_yellow_found:
+                    print("Yellow Lane Detected! Start Exit Sequence.")
+                    self.rotary_state = 3
+                    self.rotary_entry_time = time.time() # 탈출 타이머 시작
+
+            # ----------------------------------------------------
+            # 상태 3: 로터리 탈출 (좀 더 꺾어서 차선 맞추기)
+            # ----------------------------------------------------
+            elif self.rotary_state == 3:
+                self.speed_msg.data = 800  # 탈출 시 감속
+                self.steer_msg.data = 0.95 # 4. 차선 복귀를 위해 더 큰 각도로 우회전
+                
+                # 약 1.0초간 크게 꺾어 차선에 맞춘 후 로터리 미션 완료
+                if time.time() - self.rotary_entry_time > 1.0:
+                    print("Escape Rotary Complete!")
+                    self.mission_flag = Mission.TRAFFICLIGHT.value
+                    self.mission_completed[3] = True # 로터리 미션 완료 처리
+                    self.rotary_state = 0 # 로터리 상태 초기화
 
         elif self.mission_flag == Mission.TRAFFICLIGHT.value:
             print("At Traffic Light")
