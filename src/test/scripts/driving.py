@@ -33,7 +33,8 @@ class AutonomousDriving:
         self.speed_msg = Float64()
 
         self.speed_msg.data = 1500 # Default speed
-        self.mission_flag = Mission.STRAIGHT.value
+        self.mission_flag = Mission.TRAFFICLIGHT.value
+        self.current_lane = 'UNKNOWN'
 
         # self.mission_completed = [True, True, True, False, False]  # 각 미션 완료 여부를 저장하는 리스트
         self.mission_completed = [False] * 5  # 각 미션 완료 여부를 저장하는 리스트
@@ -144,11 +145,11 @@ class AutonomousDriving:
 
         elif self.mission_flag == Mission.TRAFFICLIGHT.value:
             print("At Traffic Light")
-            self.traffic_signal()
-            if left_fit is not None and right_fit is not None:
-                self.setSteeringinCurve(left_fit, right_fit)
-            else:
-                self.setSteeringinStraight(bin_img)
+            
+            self.current_lane = self.check_current_lane(bin_img)
+            print(f"At Traffic Light, Current Lane: {self.current_lane}")
+
+            self.traffic_run()
 
             if self.stop_lane_detector.stop_line_num == 7:
                 self.mission_completed[4] = True  # 5번째 미션 완료
@@ -181,7 +182,7 @@ class AutonomousDriving:
 
 
 
-    def traffic_signal(self):
+    def traffic_run(self):
         signal = self.traffic_sub.traffic_signal
         # print(self.stop_line_distance, "m away")
         if signal == 1:  # 빨간불
@@ -195,7 +196,6 @@ class AutonomousDriving:
             self.speed_msg.data = 300
         elif signal == 16 or signal == 33:
             self.speed_msg.data = 1000
-
 
     def setSteeringinStraight(self, bin_img):
         """
@@ -218,24 +218,24 @@ class AutonomousDriving:
         # CASE 1: 양쪽 차선이 모두 잘 보일 때 (가장 이상적인 경우)
         if histogram[leftx_base] > 50 and histogram[rightx_base] > 50:
             lane_center = (leftx_base + rightx_base) / 2
-            print("Status: Two lanes detected (1)")
+            # print("Status: Two lanes detected (1)")
         
-        # ⭐️ CASE 2: 한쪽 차선만 보일 때 (핵심 개선 부분)
+        # CASE 2: 한쪽 차선만 보일 때 (핵심 개선 부분)
         else:
             # 오른쪽 차선만 보일 경우
             if histogram[rightx_base] > 50:
                 # 오른쪽 차선 위치에서 차선 폭의 절반만큼 왼쪽으로 이동한 지점을 가상 중앙으로 설정
                 lane_center = rightx_base - (LANE_WIDTH_PIXELS / 2)
-                print("Status: Right lane only (2-Right)")
+                # print("Status: Right lane only (2-Right)")
             # 왼쪽 차선만 보일 경우
             elif histogram[leftx_base] > 50:
                 # 왼쪽 차선 위치에서 차선 폭의 절반만큼 오른쪽으로 이동한 지점을 가상 중앙으로 설정
                 lane_center = leftx_base + (LANE_WIDTH_PIXELS / 2)
-                print("Status: Left lane only (2-Left)")
+                # print("Status: Left lane only (2-Left)")
             # CASE 3: 양쪽 차선이 모두 안 보일 경우
             else:
                 lane_center = midpoint
-                print("Status: No lanes detected (3)")
+                # print("Status: No lanes detected (3)")
         
         # 최종 조향각 계산
         offset = (lane_center - midpoint) / midpoint
@@ -287,3 +287,37 @@ class AutonomousDriving:
         
         self.steer_msg.data = np.clip(steer, 0.0, 1.0)
         print(f"Inner Right Turn... Target X: {target_x:.1f}, Steer: {self.steer_msg.data:.2f}")
+
+    def check_current_lane(self, bin_img):
+        """
+        [신규] 현재 주행 중인 차선이 안쪽(왼쪽)인지 바깥쪽(오른쪽)인지 판단하는 함수
+        
+        Returns:
+            str: 'INNER' (안쪽), 'OUTER' (바깥쪽), 또는 'UNKNOWN'
+        """
+        # 이미지 하단부의 히스토그램을 계산
+        histogram = np.sum(bin_img[self.height // 2:, :], axis=0)
+        
+        # 히스토그램의 무게 중심(차선들의 중앙)을 계산
+        # np.where는 조건에 맞는 인덱스들의 튜플을 반환하므로 [0]으로 접근
+        lane_indices = np.where(histogram > 100)[0]
+        
+        # 차선이 하나라도 감지되었을 경우
+        if len(lane_indices) > 0:
+            lane_center = np.mean(lane_indices)
+            
+            # 차량의 중심(이미지 중앙)이 차선들의 중앙보다 왼쪽에 있으면 안쪽 차선
+            if self.width / 2 < lane_center:
+                # print("Lane Check: INNER LANE")
+                return 'INNER'
+            # 오른쪽에 있으면 바깥쪽 차선
+            else:
+                # print("Lane Check: OUTER LANE")
+                return 'OUTER'
+        
+        # 차선이 전혀 감지되지 않으면 판단 불가
+        else:
+            # print("Lane Check: UNKNOWN")
+            return 'UNKNOWN'
+        
+

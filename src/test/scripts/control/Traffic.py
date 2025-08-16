@@ -17,7 +17,7 @@ class Traffic:
         self.traffic_msg = msg
         if self.traffic_msg.trafficLightIndex == "SN000005":
             self.traffic_signal = msg.trafficLightStatus
-            print(self.traffic_signal)
+            # print(self.traffic_signal)
             
             if self.traffic_signal != self.prev_signal:
                 self.prev_signal = self.traffic_signal
