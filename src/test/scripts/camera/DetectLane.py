@@ -92,3 +92,106 @@ class StopLane:
 
     def isStop(self):
         return self.stop_line_detected
+    
+
+
+
+class CurveLane:
+    def __init__(self):
+        """
+        급격한 커브(코너)를 감지하는 클래스
+        """
+        self.curve_detected = False
+        self.corner_point = None  # 코너의 좌표
+        self.corner_angle = 0.0   # 코너의 각도
+
+    def detect(self, bin_img, nwindows=9, threshold_angle=30):
+        """
+        이진 이미지에서 차선의 중심점들을 분석하여 급격한 코너를 감지합니다.
+
+        Args:
+            bin_img (numpy.ndarray): 조감도(Bird's-Eye View)로 변환된 이진 이미지
+            nwindows (int): 탐색에 사용할 슬라이딩 윈도우의 수
+            threshold_angle (float): 코너로 판단할 최소 각도 변화량 (단위: degree)
+        """
+        # 기본값 초기화
+        self.curve_detected = False
+        self.corner_point = None
+        self.corner_angle = 0.0
+
+        # 이미지의 높이와 너비
+        height, width = bin_img.shape
+
+        # 오른쪽 차선을 기준으로 탐색 (이미지 오른쪽 절반)
+        histogram = np.sum(bin_img[height // 2:, width // 2:], axis=0)
+        if np.max(histogram) == 0:
+            return # 오른쪽 차선이 감지되지 않으면 종료
+
+        rightx_base = np.argmax(histogram) + width // 2
+
+        # 윈도우 설정
+        window_height = height // nwindows
+        
+        # 0이 아닌 픽셀(차선)의 좌표
+        nonzero = bin_img.nonzero()
+        nonzeroy = np.array(nonzero[0])
+        nonzerox = np.array(nonzero[1])
+        
+        rightx_current = rightx_base
+        margin = 100  # 윈도우 좌우 여백
+        minpix = 50   # 윈도우 안의 최소 픽셀 수
+
+        # 윈도우 별 중심점(centroid)을 저장할 리스트
+        centroids = []
+        for window in range(nwindows):
+            win_y_low = height - (window + 1) * window_height
+            win_y_high = height - window * window_height
+            win_xright_low = rightx_current - margin
+            win_xright_high = rightx_current + margin
+
+            # 현재 윈도우에 속하는 픽셀들의 인덱스 찾기
+            good_right_inds = ((nonzeroy >= win_y_low) & (nonzeroy < win_y_high) & 
+                               (nonzerox >= win_xright_low) & (nonzerox < win_xright_high)).nonzero()[0]
+            
+            # 픽셀이 충분히 있으면 중심점 계산 후 다음 윈도우 위치 업데이트
+            if len(good_right_inds) > minpix:
+                avg_x = int(np.mean(nonzerox[good_right_inds]))
+                avg_y = (win_y_low + win_y_high) // 2
+                centroids.append((avg_x, avg_y))
+                rightx_current = avg_x
+
+        # 중심점이 3개 이상 있어야 각도 계산 가능
+        if len(centroids) < 3:
+            return
+
+        # 중심점들을 이용해 각도 계산
+        angles = []
+        for i in range(len(centroids) - 1):
+            x1, y1 = centroids[i]
+            x2, y2 = centroids[i+1]
+            # arctan2를 이용해 두 점 사이의 각도 계산 (y축이 반대이므로 y2-y1이 아닌 y1-y2)
+            angle = np.arctan2(y1 - y2, x2 - x1)
+            angles.append(np.degrees(angle))
+
+        # 각도 변화량이 가장 큰 지점 탐지
+        if len(angles) > 1:
+            angle_diffs = np.abs(np.diff(angles))
+            max_diff_idx = np.argmax(angle_diffs)
+            max_angle_diff = angle_diffs[max_diff_idx]
+
+            # 변화량이 임계값을 넘으면 코너로 판단
+            if max_angle_diff > threshold_angle:
+                self.curve_detected = True
+                # 코너가 시작되는 지점의 좌표와 각도를 저장
+                self.corner_point = centroids[max_diff_idx + 1]
+                self.corner_angle = max_angle_diff
+                # print(f"Sharp corner detected! Angle change: {self.corner_angle:.2f} degrees")
+
+    def isCurve(self):
+        """
+        급격한 커브가 감지되었는지 여부를 반환합니다.
+
+        Returns:
+            bool: 커브가 감지되었으면 True, 아니면 False
+        """
+        return self.curve_detected

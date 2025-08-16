@@ -52,7 +52,7 @@ class AutonomousDriving:
         if self.mission_flag == Mission.STRAIGHT.value:
             print("STRAIGHT LINE")
             self.setSteeringinStraight(bin_img)
-            if self.stop_lane_detector.stop_line_detected or self.stop_lane_detector.stop_line_num == 3:
+            if self.stop_lane_detector.stop_line_num == 3:
                 self.mission_flag = Mission.FIRST_CORNER.value
             elif self.stop_lane_detector.stop_line_num == 4 and self.mission_completed[2] == True: # 두번째 코너 확인하기 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1
                 self.mission_flag = Mission.SECOND_CORNER.value
