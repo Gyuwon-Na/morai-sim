@@ -38,7 +38,7 @@ class AutonomousDriving:
         # self.mission_completed = [True, True, True, False, False]  # 각 미션 완료 여부를 저장하는 리스트
         self.mission_completed = [False] * 5  # 각 미션 완료 여부를 저장하는 리스트
 
-        self.rotary_state = 1       # 로터리 내 하위 상태 
+        self.rotary_state = 0       # 로터리 내 하위 상태 
         self.rotary_entry_time = 0  # 상태 전환을 위한 타이머
         
 
