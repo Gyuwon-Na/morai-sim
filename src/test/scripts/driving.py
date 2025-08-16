@@ -35,25 +35,23 @@ class AutonomousDriving:
 
         self.speed_msg.data = 1500 # Default speed
         self.mission_flag = Mission.STRAIGHT.value
-        self.current_lane = 'UNKNOWN'
 
         # self.mission_completed = [True, True, True, False, False]  # 각 미션 완료 여부를 저장하는 리스트
         self.mission_completed = [False] * 5  # 각 미션 완료 여부를 저장하는 리스트
 
         self.rotary_state = 0       # 로터리 내 하위 상태 
         self.rotary_entry_time = 0  # 상태 전환을 위한 타이머
-        
+
+        # 신호등 미션용 상태 변수 및 타이머 추가
+        self.traffic_light_state = 0 # 0: 대기, 1: 회전 실행, 2: 자세 교정
+        self.traffic_light_timer = 0        
 
     def action(self, width, height, warped_img, bin_img):
         self.width = width
         self.height = height
         left_fit, right_fit = self.sliding.apply(bin_img)
 
-
-        # self.detect_stop_line(bin_img)
-
         self.stop_lane_detector.detect(width,height,bin_img)
-
 
         if self.mission_flag == Mission.STRAIGHT.value:
             print("STRAIGHT LINE")
@@ -147,10 +145,8 @@ class AutonomousDriving:
                     self.rotary_state = 0 # 로터리 상태 초기화
 
         elif self.mission_flag == Mission.TRAFFICLIGHT.value:
-            self.current_lane = self.check_current_lane(bin_img)
-            print(f"At Traffic Light, Current Lane: {self.current_lane}")
-
-            self.traffic_run()
+            
+            self.traffic_run(bin_img) 
 
             if self.stop_lane_detector.stop_line_num == 7:
                 self.mission_completed[4] = True  # 5번째 미션 완료
@@ -172,38 +168,74 @@ class AutonomousDriving:
         elif self.mission_flag == Mission.FINISH.value:
             print("FINISH LINE")
 
-        # try:
-        #     if left_fit is not None and right_fit is not None:
-        #         self.setSteeringinCurve(left_fit, right_fit)
-        #     else:
-        #         self.setSteeringinStraight(bin_img)
-        # except Exception as e:
-        #     pass
-        
+
         self.steer_pub.publish(self.steer_msg)
         self.speed_pub.publish(self.speed_msg)
 
 
-
-    def traffic_run(self):
+    def traffic_run(self, bin_img):
         signal = self.traffic_sub.traffic_signal
         # print(self.stop_line_distance, "m away")
-        if signal == 1:  # 빨간불
-            if self.stop_lane_detector.stop_line_detected and self.stop_lane_detector.stop_line_distance <= 0.3:
-                self.speed_msg.data = 0  # 정지선 0.3m 이내에서만 정지
-            elif self.stop_lane_detector.stop_line_detected and self.stop_lane_detector.stop_line_distance <= 1.0:
-                self.speed_msg.data = 300  # 정지선 근처에서 감속
-            else:
-                self.speed_msg.data = 500
-        elif signal == 4:
-            self.speed_msg.data = 300
-        elif signal == 16 or signal == 33:
-            self.speed_msg.data = 1000
+        
+        if self.traffic_light_state == 0:
+            self.setSteeringinStraight(bin_img)
 
-            # if self.current_lane == 'INNER':
-            #     print("Inner Lane Detected, Adjusting Steering for Right Turn")
-            # elif self.current_lane == 'OUTER':
-            #     print("Outer Lane Detected, Adjusting Steering for Left Turn")
+            if signal == 1:  # 빨간불
+                if self.stop_lane_detector.stop_line_detected and self.stop_lane_detector.stop_line_distance <= 0.3:
+                    self.speed_msg.data = 0  # 정지선 0.3m 이내에서만 정지
+                elif self.stop_lane_detector.stop_line_detected and self.stop_lane_detector.stop_line_distance <= 1.0:
+                    self.speed_msg.data = 300  # 정지선 근처에서 감속
+                else:
+                    self.speed_msg.data = 500
+            elif signal == 4:
+                self.speed_msg.data = 300
+            elif signal == 16 or signal == 33:
+                self.traffic_light_timer = time.time()
+                self.traffic_light_state = 1
+
+        elif self.traffic_light_state == 1:
+            self.speed_msg.data = 1000
+            self.steer_msg.data = 0.5  # 중앙으로 조향
+            elapsed_time = time.time() - self.traffic_light_timer
+            
+            print(f"Executing Timed Turn... Time: {elapsed_time:.1f}s")
+            
+            # 바깥 차선이면 1.15 안쪽 차선이면 1.0
+            if elapsed_time > 1.05: # 1.05는 바깥 차선에서 돌 때 약간 모자라긴 한데 나중에 한 1.07로 테스트 해볼 것
+                print("Main turn finished, correcting posture.")
+                self.traffic_light_timer = time.time() # 타이머 리셋
+                self.traffic_light_state = 2
+
+        elif self.traffic_light_state == 2:
+            self.speed_msg.data = 1000
+            elapsed_time = time.time() - self.traffic_light_timer
+            
+            self.steer_msg.data = 0.20 # 좌회전 조향각
+            print(f"Executing Timed Turn... Time: {elapsed_time:.1f}s")
+
+            # 2.5초간 회전 후 '자세 교정' 상태로 전환
+            if elapsed_time > 2.5:
+                print("Main turn finished, correcting posture.")
+                self.traffic_light_timer = time.time()
+                self.traffic_light_state = 3 # ⭐️ '자세 교정' 상태로 전환
+
+        elif self.traffic_light_state == 3:
+            self.speed_msg.data = 800 # 교정 시 속도
+            self.setSteeringinStraight(bin_img)
+
+            elapsed_time = time.time() - self.traffic_light_timer
+            
+            # ⭐️ 1.5초 동안 반대(0.7) 조향으로 자세를 바로잡음 (튜닝 필요)
+            print(f"Correcting Posture... Time: {elapsed_time:.1f}s")
+
+            # 1.5초가 지나면 모든 과정을 완료
+            if elapsed_time > 1.5:
+                print("Posture corrected. Traffic light mission complete.")
+                # 미션 완료 처리 및 상태 초기화
+                self.mission_completed[4] = True
+                self.mission_flag = Mission.THIRD_CORNER.value
+                self.traffic_light_state = 0
+
 
     def setSteeringinStraight(self, bin_img):
         """
@@ -295,37 +327,4 @@ class AutonomousDriving:
         
         self.steer_msg.data = np.clip(steer, 0.0, 1.0)
         print(f"Inner Right Turn... Target X: {target_x:.1f}, Steer: {self.steer_msg.data:.2f}")
-
-    def check_current_lane(self, bin_img):
-        """
-        [신규] 현재 주행 중인 차선이 안쪽(왼쪽)인지 바깥쪽(오른쪽)인지 판단하는 함수
-        
-        Returns:
-            str: 'INNER' (안쪽), 'OUTER' (바깥쪽), 또는 'UNKNOWN'
-        """
-        # 이미지 하단부의 히스토그램을 계산
-        histogram = np.sum(bin_img[self.height // 2:, :], axis=0)
-        
-        # 히스토그램의 무게 중심(차선들의 중앙)을 계산
-        # np.where는 조건에 맞는 인덱스들의 튜플을 반환하므로 [0]으로 접근
-        lane_indices = np.where(histogram > 100)[0]
-        
-        # 차선이 하나라도 감지되었을 경우
-        if len(lane_indices) > 0:
-            lane_center = np.mean(lane_indices)
-            
-            # 차량의 중심(이미지 중앙)이 차선들의 중앙보다 왼쪽에 있으면 안쪽 차선
-            if self.width / 2 < lane_center:
-                # print("Lane Check: INNER LANE")
-                return 'INNER'
-            # 오른쪽에 있으면 바깥쪽 차선
-            else:
-                # print("Lane Check: OUTER LANE")
-                return 'OUTER'
-        
-        # 차선이 전혀 감지되지 않으면 판단 불가
-        else:
-            # print("Lane Check: UNKNOWN")
-            return 'UNKNOWN'
-        
 
